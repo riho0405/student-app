@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🍖 学生オールインワンアプリ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Zen Maru Gothic', sans-serif; background: #fef9f0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+const DAYS = ["月","火","水","木","金"];
+const PERIODS = ["1限","2限","3限","4限","5限","6限"];
+const PERIODS_TIME = ["9:00-10:40","10:50-12:30","13:20-15:00","15:10-16:50","17:00-18:40","18:50-20:30"];
+const TABS = [
+  {id:"home",label:"ホーム",icon:"🏠"},
+  {id:"timetable",label:"時間割",icon:"📅"},
+  {id:"tasks",label:"課題",icon:"📝"},
+  {id:"finance",label:"家計簿",icon:"💰"},
+  {id:"units",label:"単位",icon:"🎓"},
+  {id:"mail",label:"メール",icon:"✉️"},
+  {id:"links",label:"学内",icon:"🔗"},
+];
+const GRADE_POINTS = {"A+":4,"A":3,"B":2,"C":1,"F":0};
+
+const INIT_TIMETABLE = {
+  "月-0":{name:"ソフトウェア工学",room:"A101",color:"#f97316"},
+  "月-2":{name:"データ構造",room:"B203",color:"#8b5cf6"},
+  "火-1":{name:"線形代数",room:"C305",color:"#06b6d4"},
+  "火-3":{name:"英語コミュニケーション",room:"D102",color:"#10b981"},
+  "水-0":{name:"プログラミング実習",room:"PC室1",color:"#f97316"},
+  "水-2":{name:"データベース",room:"A203",color:"#8b5cf6"},
+  "木-1":{name:"統計学",room:"B101",color:"#06b6d4"},
+  "木-4":{name:"ゼミ",room:"研究室",color:"#ec4899"},
+  "金-0":{name:"情報倫理",room:"C201",color:"#10b981"},
+  "金-2":{name:"卒業研究",room:"研究室",color:"#ec4899"},
+};
+const INIT_TASKS = [
+  {id:1,subject:"ソフトウェア工学",title:"進捗レポート提出",due:"2025-07-10",done:false,priority:"high"},
+  {id:2,subject:"データ構造",title:"課題3: ハッシュテーブル実装",due:"2025-07-08",done:false,priority:"high"},
+  {id:3,subject:"線形代数",title:"問題集p.45-60",due:"2025-07-12",done:true,priority:"medium"},
+  {id:4,subject:"英語",title:"エッセイ提出",due:"2025-07-15",done:false,priority:"low"},
+];
+const INIT_FINANCE = [
+  {id:1,date:"2025-07-01",label:"昼食",amount:-800,category:"食費"},
+  {id:2,date:"2025-07-02",label:"バイト",amount:8500,category:"収入"},
+  {id:3,date:"2025-07-03",label:"教科書",amount:-3200,category:"学費"},
+  {id:4,date:"2025-07-04",label:"交通費",amount:-640,category:"交通"},
+];
+const INIT_UNITS = [
+  {id:1,name:"ソフトウェア工学",credits:2,required:true,grade:"A"},
+  {id:2,name:"データ構造",credits:2,required:true,grade:"B"},
+  {id:3,name:"線形代数",credits:2,required:true,grade:"A+"},
+  {id:4,name:"英語コミュニケーション",credits:1,required:false,grade:"B"},
+  {id:5,name:"プログラミング実習",credits:2,required:true,grade:"A"},
+  {id:6,name:"情報倫理",credits:1,required:false,grade:null},
+];
+
+function load(key, def) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
+}
+function save(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
+}
+
+function getDaysUntil(d) {
+  const t = new Date(); t.setHours(0,0,0,0);
+  const due = new Date(d); due.setHours(0,0,0,0);
+  return Math.round((due-t)/86400000);
+}
+
+const css = `
+  .app{min-height:100vh;background:#fef9f0;color:#2d1a0e}
+  .header{background:linear-gradient(135deg,#b45309,#d97706,#f97316);padding:1rem 1.25rem 0.75rem;display:flex;align-items:center;gap:.75rem;position:sticky;top:0;z-index:10;box-shadow:0 2px 8px rgba(180,83,9,.2)}
+  .header-title{color:#fff;font-size:1.2rem;font-weight:700;letter-spacing:.05em}
+  .header-sub{color:rgba(255,255,255,.8);font-size:.75rem;margin-top:.1rem}
+  .tab-bar{display:flex;background:#fff;border-bottom:1.5px solid #fde68a;overflow-x:auto;position:sticky;top:68px;z-index:9;scrollbar-width:none}
+  .tab-bar::-webkit-scrollbar{display:none}
+  .tab-btn{flex:none;padding:.65rem 1rem;font-size:.78rem;font-family:'Zen Maru Gothic',sans-serif;background:none;border:none;cursor:pointer;color:#92400e;display:flex;flex-direction:column;align-items:center;gap:.2rem;border-bottom:2.5px solid transparent;transition:all .15s;white-space:nowrap;font-weight:500}
+  .tab-btn.active{color:#d97706;border-bottom-color:#d97706;background:#fffbeb}
+  .tab-btn:hover{background:#fef3c7}
+  .content{padding:1rem 1rem 5rem;max-width:720px;margin:0 auto}
+  .sec{font-size:1rem;font-weight:700;color:#92400e;margin:1.25rem 0 .75rem;display:flex;align-items:center;gap:.5rem}
+  .card{background:#fff;border-radius:12px;border:1.5px solid #fde68a;padding:1rem;margin-bottom:.75rem}
+  .card-sm{background:#fff;border-radius:10px;border:1.5px solid #fde68a;padding:.75rem 1rem;margin-bottom:.5rem}
+  .weather-card{background:linear-gradient(135deg,#fffbeb,#fef3c7);border:1.5px solid #fde68a;border-radius:14px;padding:1.1rem 1.25rem;margin-bottom:.75rem}
+  .w-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem}
+  .w-label{font-size:.72rem;color:#b45309;font-weight:700}
+  .w-body{display:flex;align-items:center;gap:1rem}
+  .w-emoji{font-size:2.2rem}
+  .w-temp{font-size:1.7rem;font-weight:700;color:#d97706}
+  .w-desc{font-size:.85rem;color:#92400e}
+  .w-outfit{font-size:.78rem;color:#b45309;margin-top:.2rem}
+  .w-note{font-size:.65rem;color:#b45309;opacity:.7;margin-top:.15rem}
+  .w-err{font-size:.7rem;color:#dc2626;margin-top:.15rem}
+  .stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1rem}
+  .stat-card{background:#fff;border-radius:10px;border:1.5px solid #fde68a;padding:.75rem;text-align:center}
+  .stat-num{font-size:1.4rem;font-weight:700;color:#d97706}
+  .stat-label{font-size:.7rem;color:#92400e;margin-top:.2rem}
+  .task-item{display:flex;align-items:flex-start;gap:.75rem;padding:.75rem;background:#fff;border-radius:10px;border:1.5px solid #fde68a;margin-bottom:.5rem}
+  .task-item.done{opacity:.55}
+  .task-check{width:22px;height:22px;border-radius:50%;border:2px solid #d97706;background:none;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:.8rem;transition:all .15s;margin-top:1px}
+  .task-check.checked{background:#10b981;border-color:#10b981;color:#fff}
+  .task-body{flex:1;min-width:0}
+  .task-title{font-size:.9rem;font-weight:500}
+  .task-meta{font-size:.75rem;color:#92400e;margin-top:.2rem;display:flex;gap:.75rem;flex-wrap:wrap}
+  .badge{display:inline-block;padding:.15rem .5rem;border-radius:20px;font-size:.68rem;font-weight:700}
+  .badge-red{background:#fee2e2;color:#dc2626}
+  .badge-orange{background:#ffedd5;color:#ea580c}
+  .badge-purple{background:#ede9fe;color:#7c3aed}
+  .badge-green{background:#d1fae5;color:#059669}
+  .btn{padding:.55rem 1.1rem;border-radius:8px;border:none;cursor:pointer;font-family:'Zen Maru Gothic',sans-serif;font-size:.85rem;font-weight:700;transition:all .15s}
+  .btn-p{background:#d97706;color:#fff}
+  .btn-p:hover{background:#b45309}
+  .btn-g{background:#fef3c7;color:#92400e;border:1.5px solid #fde68a}
+  .btn-g:hover{background:#fde68a}
+  .btn-d{background:#fee2e2;color:#dc2626;border:none;font-size:.75rem;padding:.3rem .6rem;border-radius:6px;cursor:pointer;font-family:'Zen Maru Gothic',sans-serif;font-weight:700}
+  .input{width:100%;padding:.55rem .75rem;border:1.5px solid #fde68a;border-radius:8px;font-family:'Zen Maru Gothic',sans-serif;font-size:.85rem;background:#fff;color:#2d1a0e;outline:none}
+  .input:focus{border-color:#d97706}
+  .sel{width:100%;padding:.55rem .75rem;border:1.5px solid #fde68a;border-radius:8px;font-family:'Zen Maru Gothic',sans-serif;font-size:.85rem;background:#fff;color:#2d1a0e;outline:none;appearance:none}
+  .frow{margin-bottom:.6rem}
+  .flabel{font-size:.78rem;color:#92400e;margin-bottom:.25rem;display:block;font-weight:500}
+  .tt{width:100%;border-collapse:collapse}
+  .tt th,.tt td{border:1px solid #fde68a;padding:.3rem .2rem;text-align:center}
+  .tt th{background:#fef3c7;font-size:.75rem;color:#92400e;font-weight:700;padding:.4rem .2rem}
+  .cc{cursor:pointer;min-height:52px;vertical-align:top;padding:.3rem}
+  .cc:hover{background:#fffbeb}
+  .cn{font-size:.68rem;font-weight:700;color:#fff;border-radius:6px;padding:.25rem .3rem;line-height:1.3;word-break:break-all}
+  .cr{font-size:.58rem;color:rgba(255,255,255,.85);margin-top:.15rem}
+  .ch{font-size:.6rem;color:#d97706;opacity:.5}
+  .fin-item{display:flex;justify-content:space-between;align-items:center;padding:.6rem .75rem;background:#fff;border-radius:8px;border:1px solid #fde68a;margin-bottom:.4rem}
+  .fin-amt{font-size:.9rem;font-weight:700}
+  .pos{color:#059669} .neg{color:#dc2626}
+  .unit-row{display:flex;justify-content:space-between;align-items:center;padding:.65rem .75rem;background:#fff;border-radius:8px;border:1px solid #fde68a;margin-bottom:.4rem}
+  .gpa-bar{background:#fef3c7;border-radius:8px;height:8px;margin-top:.5rem;overflow:hidden}
+  .gpa-fill{height:100%;background:linear-gradient(90deg,#d97706,#f97316);border-radius:8px;transition:width .4s}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;display:flex;align-items:center;justify-content:center;padding:1rem}
+  .modal{background:#fff;border-radius:16px;padding:1.25rem;width:100%;max-width:400px;border:2px solid #fde68a;max-height:90vh;overflow-y:auto}
+  .modal-title{font-size:1rem;font-weight:700;color:#92400e;margin-bottom:1rem}
+  .today-cls{display:flex;align-items:center;gap:.75rem;padding:.6rem .75rem;background:#fff;border-radius:8px;border-left:4px solid #d97706;border-top:1px solid #fde68a;border-right:1px solid #fde68a;border-bottom:1px solid #fde68a;margin-bottom:.4rem}
+  .mail-out{background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:1rem;font-size:.82rem;line-height:1.8;white-space:pre-wrap;color:#2d1a0e;margin-top:1rem}
+  .empty{text-align:center;padding:2rem;color:#b45309;opacity:.6;font-size:.85rem}
+  .alert-u{background:#fee2e2;border:1.5px solid #fca5a5;border-radius:10px;padding:.75rem 1rem;margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem;font-size:.82rem;color:#dc2626;font-weight:500}
+`;
+
+function WeatherCard({w, loading, label, onSetAddress, onRefresh}) {
+  return (
+    <div className="weather-card">
+      <div className="w-top">
+        <span className="w-label">{label}</span>
+        <div style={{display:"flex",gap:".4rem"}}>
+          {onRefresh && <button onClick={onRefresh} style={{background:"none",border:"none",cursor:"pointer",fontSize:".75rem",color:"#b45309",padding:"0 .25rem"}}>{loading?"🔄":"↻ 更新"}</button>}
+          {onSetAddress && <button onClick={onSetAddress} style={{background:"#fef3c7",border:"1.5px solid #fde68a",borderRadius:6,padding:".2rem .5rem",fontSize:".7rem",color:"#92400e",cursor:"pointer",fontFamily:"'Zen Maru Gothic',sans-serif"}}>住所設定</button>}
+        </div>
+      </div>
+      <div className="w-body">
+        <div className="w-emoji">{loading?"🔄":w?.emoji||"🌤️"}</div>
+        <div style={{flex:1}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:".5rem",flexWrap:"wrap"}}>
+            <span className="w-temp">{w?.temp??"--"}°C</span>
+            <span className="w-desc">{w?.desc}</span>
+            {w?.tempMax && <span style={{fontSize:".75rem",color:"#b45309"}}>最高{w.tempMax}°C</span>}
+            {w?.pop && <span style={{fontSize:".75rem",color:"#2563eb"}}>☂ {w.pop}</span>}
+          </div>
+          <div className="w-outfit">👔 {w?.outfit||(loading?"取得中...":"住所を設定してください")}</div>
+          {w?.error && <div className="w-err">⚠ {w.error}</div>}
+          {w?.updated && <div className="w-note">{w.updated}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tab, setTab] = useState("home");
+  const [timetable, setTimetable] = useState(() => load("tt", INIT_TIMETABLE));
+  const [tasks, setTasks] = useState(() => load("tasks", INIT_TASKS));
+  const [finance, setFinance] = useState(() => load("finance", INIT_FINANCE));
+  const [units, setUnits] = useState(() => load("units", INIT_UNITS));
+  const [weather, setWeather] = useState({emoji:"⛅",desc:"くもり時々雨",temp:22,tempMax:26,pop:"40%",outfit:"折り畳み傘を持っていこう",locationName:"日本女子大学周辺",updated:"起動時のデフォルト値（↻更新ボタンで最新取得）"});
+  const [homeWeather, setHomeWeather] = useState(null);
+  const [loadingW, setLoadingW] = useState(false);
+  const [loadingHW, setLoadingHW] = useState(false);
+  const [homeAddr, setHomeAddr] = useState(() => load("homeAddr",""));
+  const [showAddrModal, setShowAddrModal] = useState(false);
+  const [addrInput, setAddrInput] = useState("");
+  const [editCell, setEditCell] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [taskForm, setTaskForm] = useState({subject:"",title:"",due:"",priority:"medium"});
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [finForm, setFinForm] = useState({date:new Date().toISOString().slice(0,10),label:"",amount:"",category:"食費"});
+  const [showFinForm, setShowFinForm] = useState(false);
+  const [mailForm, setMailForm] = useState({reason:"欠席",prof:"",subject_name:"",extra:""});
+  const [genMail, setGenMail] = useState("");
+  const [loadingMail, setLoadingMail] = useState(false);
+
+  const todayDay = ["日","月","火","水","木","金","土"][new Date().getDay()];
+
+  useEffect(() => { save("tt", timetable); }, [timetable]);
+  useEffect(() => { save("tasks", tasks); }, [tasks]);
+  useEffect(() => { save("finance", finance); }, [finance]);
+  useEffect(() => { save("units", units); }, [units]);
+  useEffect(() => { if(homeAddr) save("homeAddr", homeAddr); }, [homeAddr]);
+
+  function extractJSON(text) {
+    const m = text.match(/\{[\s\S]*?\}/);
+    if (!m) throw new Error("JSONが見つかりません");
+    return JSON.parse(m[0]);
+  }
+
+  async function callWeatherAI(location) {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        model:"claude-sonnet-4-6",
+        max_tokens:300,
+        system:"You are a weather assistant. Respond with ONLY a raw JSON object. No markdown, no explanation, no code blocks. Just the JSON.",
+        messages:[{role:"user",content:`Current weather in ${location}, Japan. Reply ONLY with this JSON (real values, integers for temp):
+{"emoji":"☀️","desc":"晴れ","temp":20,"tempMax":25,"pop":"10%","outfit":"薄着でOK"}`}]
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error.message);
+    const text = (d.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+    return extractJSON(text);
+  }
+
+  async function refreshSchoolWeather() {
+    setLoadingW(true);
+    try {
+      const p = await callWeatherAI("Mejiro Shinjuku Tokyo (日本女子大学)");
+      setWeather({...p, locationName:"日本女子大学周辺", updated:"たった今更新", error:null});
+    } catch(e) {
+      setWeather(w=>({...w, error:"更新失敗: "+e.message}));
+    }
+    setLoadingW(false);
+  }
+
+  async function fetchHomeWeather(addr) {
+    const target = addr||homeAddr;
+    if (!target) return;
+    setLoadingHW(true);
+    try {
+      const p = await callWeatherAI(target);
+      setHomeWeather({...p, locationName:target+"周辺", updated:"たった今更新", error:null});
+    } catch(e) {
+      setHomeWeather({emoji:"❓",desc:"取得失敗",temp:"--",tempMax:"--",pop:"--",outfit:"もう一度お試しください",locationName:target,error:e.message});
+    }
+    setLoadingHW(false);
+  }
+
+  function saveHomeAddr() {
+    setHomeAddr(addrInput);
+    setShowAddrModal(false);
+    if (addrInput) fetchHomeWeather(addrInput);
+  }
+
+  function openEditCell(day, period) {
+    const key=`${day}-${period}`;
+    setEditCell({day,period,key});
+    setEditForm(timetable[key]||{name:"",room:"",color:"#8b5cf6"});
+  }
+  function saveCell() {
+    if (editForm.name?.trim()) setTimetable(t=>({...t,[editCell.key]:{...editForm}}));
+    else setTimetable(t=>{const n={...t};delete n[editCell.key];return n;});
+    setEditCell(null);
+  }
+
+  function addTask() {
+    if (!taskForm.title||!taskForm.due) return;
+    const newTasks=[...tasks,{...taskForm,id:Date.now(),done:false}];
+    setTasks(newTasks);
+    setTaskForm({subject:"",title:"",due:"",priority:"medium"});
+    setShowTaskForm(false);
+  }
+  function toggleTask(id) { setTasks(ts=>ts.map(t=>t.id===id?{...t,done:!t.done}:t)); }
+  function deleteTask(id) { setTasks(ts=>ts.filter(t=>t.id!==id)); }
+
+  function addFin() {
+    if (!finForm.label||!finForm.amount) return;
+    setFinance(f=>[{...finForm,id:Date.now(),amount:parseFloat(finForm.amount)},...f]);
+    setFinForm({date:new Date().toISOString().slice(0,10),label:"",amount:"",category:"食費"});
+    setShowFinForm(false);
+  }
+  function deleteFin(id) { setFinance(f=>f.filter(x=>x.id!==id)); }
+
+  async function generateMail() {
+    setLoadingMail(true); setGenMail("");
+    const prompt=`大学生が教授に送るメールを作成してください。\n理由: ${mailForm.reason}\n教授名: ${mailForm.prof||"先生"}\n授業名: ${mailForm.subject_name||"授業"}\n追記: ${mailForm.extra||"なし"}\n\n丁寧で簡潔な日本語で、件名と本文を書いてください。`;
+    try {
+      const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]})});
+      const d=await r.json();
+      setGenMail(d.content?.[0]?.text||"エラーが発生しました");
+    } catch { setGenMail("メール生成に失敗しました。"); }
+    setLoadingMail(false);
+  }
+
+  function calcGPA() {
+    const graded=units.filter(u=>u.grade&&GRADE_POINTS[u.grade]!==undefined);
+    if (!graded.length) return "0.00";
+    const total=graded.reduce((s,u)=>s+GRADE_POINTS[u.grade]*u.credits,0);
+    const creds=graded.reduce((s,u)=>s+u.credits,0);
+    return (total/creds).toFixed(2);
+  }
+
+  const totalCredits=units.filter(u=>u.grade&&u.grade!=="F").reduce((s,u)=>s+u.credits,0);
+  const reqCredits=units.filter(u=>u.required&&u.grade&&u.grade!=="F").reduce((s,u)=>s+u.credits,0);
+  const balance=finance.reduce((s,f)=>s+f.amount,0);
+  const urgentTasks=tasks.filter(t=>!t.done&&getDaysUntil(t.due)<=3);
+  const todayCells=DAYS.includes(todayDay)?[0,1,2,3,4,5].map(i=>timetable[`${todayDay}-${i}`]?{...timetable[`${todayDay}-${i}`],period:PERIODS[i]}:null).filter(Boolean):[];
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="app">
+        <div className="header">
+          <div style={{fontSize:"1.75rem"}}>🍖</div>
+          <div>
+            
+            <div className="header-title">学生オールインワンアプリ</div>
+          </div>
+        </div>
+        <div className="tab-bar">
+          {TABS.map(t=>(
+            <button key={t.id} className={`tab-btn ${tab===t.id?"active":""}`} onClick={()=>setTab(t.id)}>
+              <span style={{fontSize:"1.1rem"}}>{t.icon}</span>{t.label}
+            </button>
+          ))}
+        </div>
+        <div className="content">
+          {tab==="home" && <HomeTab weather={weather} homeWeather={homeWeather} loadingW={loadingW} loadingHW={loadingHW} tasks={tasks} todayCells={todayCells} todayDay={todayDay} urgentTasks={urgentTasks} balance={balance} totalCredits={totalCredits} setTab={setTab} homeAddr={homeAddr} showAddrModal={showAddrModal} setShowAddrModal={setShowAddrModal} addrInput={addrInput} setAddrInput={setAddrInput} saveHomeAddr={saveHomeAddr} refreshSchoolWeather={refreshSchoolWeather} />}
+          {tab==="timetable" && <TimetableTab timetable={timetable} editCell={editCell} editForm={editForm} setEditForm={setEditForm} openEditCell={openEditCell} setEditCell={setEditCell} saveCell={saveCell} />}
+          {tab==="tasks" && <TasksTab tasks={tasks} toggleTask={toggleTask} deleteTask={deleteTask} taskForm={taskForm} setTaskForm={setTaskForm} showTaskForm={showTaskForm} setShowTaskForm={setShowTaskForm} addTask={addTask} />}
+          {tab==="finance" && <FinanceTab finance={finance} finForm={finForm} setFinForm={setFinForm} showFinForm={showFinForm} setShowFinForm={setShowFinForm} addFin={addFin} deleteFin={deleteFin} balance={balance} />}
+          {tab==="units" && <UnitsTab units={units} setUnits={setUnits} calcGPA={calcGPA} totalCredits={totalCredits} reqCredits={reqCredits} />}
+          {tab==="mail" && <MailTab mailForm={mailForm} setMailForm={setMailForm} generateMail={generateMail} genMail={genMail} loadingMail={loadingMail} />}
+          {tab==="links" && <LinksTab />}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function HomeTab({weather,homeWeather,loadingW,loadingHW,tasks,todayCells,todayDay,urgentTasks,balance,totalCredits,setTab,homeAddr,showAddrModal,setShowAddrModal,addrInput,setAddrInput,saveHomeAddr,refreshSchoolWeather}) {
+  const pending=tasks.filter(t=>!t.done);
+  return (
+    <>
+      {urgentTasks.length>0 && <div className="alert-u">⚠️ あと{getDaysUntil(urgentTasks[0].due)}日で「{urgentTasks[0].title}」の締切！</div>}
+      <WeatherCard w={weather} loading={loadingW} label="🏫 日本女子大学周辺" onRefresh={refreshSchoolWeather} />
+      <WeatherCard w={homeWeather||{emoji:"🏠",desc:"未設定",temp:"--",outfit:"住所を設定してください"}} loading={loadingHW} label="🏠 自宅周辺" onSetAddress={()=>{setAddrInput(homeAddr);setShowAddrModal(true);}} />
+      {showAddrModal && (
+        <div className="overlay" onClick={()=>setShowAddrModal(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">🏠 自宅の住所を設定</div>
+            <p style={{fontSize:".78rem",color:"#b45309",marginBottom:".5rem"}}>例：東京都練馬区、または最寄り駅名</p>
+            <input className="input" value={addrInput} onChange={e=>setAddrInput(e.target.value)} placeholder="例：東京都文京区" style={{marginBottom:".75rem"}} />
+            <div style={{display:"flex",gap:".5rem"}}>
+              <button className="btn btn-p" style={{flex:1}} onClick={saveHomeAddr}>保存して天気を取得</button>
+              <button className="btn btn-g" onClick={()=>setShowAddrModal(false)}>キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="stat-grid">
+        <div className="stat-card"><div className="stat-num">{pending.length}</div><div className="stat-label">未完了課題</div></div>
+        <div className="stat-card"><div className="stat-num">{totalCredits}</div><div className="stat-label">取得単位</div></div>
+        <div className="stat-card"><div className="stat-num" style={{color:balance>=0?"#059669":"#dc2626"}}>{balance>=0?"+":""}{balance.toLocaleString()}</div><div className="stat-label">残高（円）</div></div>
+      </div>
+      <div className="sec">📅 今日の授業{DAYS.includes(todayDay)?`（${todayDay}曜日）`:"（今日は休日！）"}</div>
+      {todayCells.length===0?<div className="empty">今日の授業はありません！🎉</div>:todayCells.map((c,i)=>(
+        <div key={i} className="today-cls" style={{borderLeftColor:c.color}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:c.color,flexShrink:0}} />
+          <div><div style={{fontWeight:700,fontSize:".88rem"}}>{c.name}</div><div style={{fontSize:".73rem",color:"#92400e"}}>📍 {c.room} · {c.period}</div></div>
+        </div>
+      ))}
+      <div className="sec">📝 急ぎの課題</div>
+      {pending.slice(0,3).map(t=>{const d=getDaysUntil(t.due);return(
+        <div key={t.id} className="card-sm" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div><div style={{fontSize:".88rem",fontWeight:500}}>{t.title}</div><div style={{fontSize:".73rem",color:"#92400e"}}>{t.subject}</div></div>
+          <span className={`badge ${d<=2?"badge-red":d<=5?"badge-orange":"badge-purple"}`}>{d<0?"期限切れ！":d===0?"今日！":`あと${d}日`}</span>
+        </div>
+      );})}
+      {pending.length===0&&<div className="empty">課題はありません！やったね🎊</div>}
+      <button className="btn btn-g" style={{width:"100%",marginTop:".5rem"}} onClick={()=>setTab("tasks")}>課題一覧を見る →</button>
+    </>
+  );
+}
+
+function TimetableTab({timetable,editCell,editForm,setEditForm,openEditCell,setEditCell,saveCell}) {
+  return (
+    <>
+      <div className="sec">📅 時間割</div>
+      <div style={{overflowX:"auto"}}>
+        <table className="tt">
+          <thead><tr><th style={{width:42}}></th>{DAYS.map(d=><th key={d}>{d}</th>)}</tr></thead>
+          <tbody>{PERIODS.map((p,i)=>(
+            <tr key={p}>
+              <td style={{background:"#fef3c7"}}>
+                <div style={{fontSize:".7rem",color:"#b45309",fontWeight:700}}>{p}</div>
+                <div style={{fontSize:".6rem",color:"#b45309"}}>{PERIODS_TIME[i].split("-")[0]}</div>
+              </td>
+              {DAYS.map(d=>{const key=`${d}-${i}`;const cell=timetable[key];return(
+                <td key={d} className="cc" onClick={()=>openEditCell(d,i)}>
+                  {cell?<div className="cn" style={{background:cell.color}}>{cell.name}<div className="cr">{cell.room}</div></div>:<div className="ch">＋</div>}
+                </td>
+              );})}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <div style={{marginTop:".5rem",fontSize:".73rem",color:"#b45309",textAlign:"center"}}>セルをタップして授業を追加・編集</div>
+      {editCell && (
+        <div className="overlay" onClick={()=>setEditCell(null)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">授業を編集 — {editCell.day}曜 {PERIODS[editCell.period]}</div>
+            <div className="frow"><label className="flabel">授業名（空欄で削除）</label><input className="input" value={editForm.name||""} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} placeholder="例：ソフトウェア工学" /></div>
+            <div className="frow"><label className="flabel">教室</label><input className="input" value={editForm.room||""} onChange={e=>setEditForm(f=>({...f,room:e.target.value}))} placeholder="例：A101" /></div>
+            <div className="frow">
+              <label className="flabel">色</label>
+              <div style={{display:"flex",gap:".5rem",flexWrap:"wrap",marginTop:".25rem"}}>
+                {["#f97316","#8b5cf6","#06b6d4","#10b981","#ec4899","#3b82f6","#ef4444","#84cc16"].map(c=>(
+                  <div key={c} onClick={()=>setEditForm(f=>({...f,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",border:editForm.color===c?"3px solid #2d1a0e":"2px solid transparent"}} />
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:".5rem",marginTop:"1rem"}}>
+              <button className="btn btn-p" style={{flex:1}} onClick={saveCell}>保存</button>
+              <button className="btn btn-g" onClick={()=>setEditCell(null)}>キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function TasksTab({tasks,toggleTask,deleteTask,taskForm,setTaskForm,showTaskForm,setShowTaskForm,addTask}) {
+  const sorted=[...tasks].sort((a,b)=>a.done!==b.done?a.done?1:-1:new Date(a.due)-new Date(b.due));
+  return (
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".75rem"}}>
+        <div className="sec" style={{margin:0}}>📝 課題一覧</div>
+        <button className="btn btn-p" onClick={()=>setShowTaskForm(true)}>＋ 追加</button>
+      </div>
+      {sorted.length===0&&<div className="empty">課題はありません！🎉</div>}
+      {sorted.map(t=>{const d=getDaysUntil(t.due);return(
+        <div key={t.id} className={`task-item ${t.done?"done":""}`}>
+          <button className={`task-check ${t.done?"checked":""}`} onClick={()=>toggleTask(t.id)}>{t.done&&"✓"}</button>
+          <div className="task-body">
+            <div className="task-title" style={{textDecoration:t.done?"line-through":"none"}}>{t.title}</div>
+            <div className="task-meta">
+              <span>{t.subject}</span><span>📅 {t.due}</span>
+              {!t.done&&<span className={`badge ${d<0?"badge-red":d<=2?"badge-red":d<=5?"badge-orange":"badge-purple"}`}>{d<0?"期限切れ":d===0?"今日！":`あと${d}日`}</span>}
+            </div>
+          </div>
+          <button className="btn-d" onClick={()=>deleteTask(t.id)}>削除</button>
+        </div>
+      );})}
+      {showTaskForm && (
+        <div className="overlay" onClick={()=>setShowTaskForm(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">課題を追加</div>
+            <div className="frow"><label className="flabel">授業名</label><input className="input" value={taskForm.subject} onChange={e=>setTaskForm(f=>({...f,subject:e.target.value}))} placeholder="例：ソフトウェア工学" /></div>
+            <div className="frow"><label className="flabel">課題名 *</label><input className="input" value={taskForm.title} onChange={e=>setTaskForm(f=>({...f,title:e.target.value}))} placeholder="例：レポート提出" /></div>
+            <div className="frow"><label className="flabel">締切日 *</label><input className="input" type="date" value={taskForm.due} onChange={e=>setTaskForm(f=>({...f,due:e.target.value}))} /></div>
+            <div className="frow"><label className="flabel">優先度</label><select className="sel" value={taskForm.priority} onChange={e=>setTaskForm(f=>({...f,priority:e.target.value}))}><option value="high">高（急ぎ）</option><option value="medium">中</option><option value="low">低</option></select></div>
+            <div style={{display:"flex",gap:".5rem",marginTop:"1rem"}}>
+              <button className="btn btn-p" style={{flex:1}} onClick={addTask}>追加</button>
+              <button className="btn btn-g" onClick={()=>setShowTaskForm(false)}>キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function FinanceTab({finance,finForm,setFinForm,showFinForm,setShowFinForm,addFin,deleteFin,balance}) {
+  const income=finance.filter(f=>f.amount>0).reduce((s,f)=>s+f.amount,0);
+  const expense=finance.filter(f=>f.amount<0).reduce((s,f)=>s+f.amount,0);
+  return (
+    <>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".75rem"}}>
+        <div className="sec" style={{margin:0}}>💰 家計簿</div>
+        <button className="btn btn-p" onClick={()=>setShowFinForm(true)}>＋ 追加</button>
+      </div>
+      <div className="stat-grid">
+        <div className="stat-card"><div className="stat-num pos">+{income.toLocaleString()}</div><div className="stat-label">収入（円）</div></div>
+        <div className="stat-card"><div className="stat-num neg">{expense.toLocaleString()}</div><div className="stat-label">支出（円）</div></div>
+        <div className="stat-card"><div className="stat-num" style={{color:balance>=0?"#059669":"#dc2626"}}>{balance>=0?"+":""}{balance.toLocaleString()}</div><div className="stat-label">収支（円）</div></div>
+      </div>
+      {finance.map(f=>(
+        <div key={f.id} className="fin-item">
+          <div><div style={{fontSize:".85rem",fontWeight:500}}>{f.label}</div><div style={{fontSize:".72rem",color:"#b45309"}}>{f.date} · {f.category}</div></div>
+          <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
+            <div className={`fin-amt ${f.amount>=0?"pos":"neg"}`}>{f.amount>=0?"+":""}{f.amount.toLocaleString()}円</div>
+            <button className="btn-d" onClick={()=>deleteFin(f.id)}>×</button>
+          </div>
+        </div>
+      ))}
+      {showFinForm && (
+        <div className="overlay" onClick={()=>setShowFinForm(false)}>
+          <div className="modal" onClick={e=>e.stopPropagation()}>
+            <div className="modal-title">収支を追加</div>
+            <div className="frow"><label className="flabel">日付</label><input className="input" type="date" value={finForm.date} onChange={e=>setFinForm(f=>({...f,date:e.target.value}))} /></div>
+            <div className="frow"><label className="flabel">内容</label><input className="input" value={finForm.label} onChange={e=>setFinForm(f=>({...f,label:e.target.value}))} placeholder="例：昼食、バイト" /></div>
+            <div className="frow"><label className="flabel">金額（収入は正、支出は負）</label><input className="input" type="number" value={finForm.amount} onChange={e=>setFinForm(f=>({...f,amount:e.target.value}))} placeholder="例：-800、5000" /></div>
+            <div className="frow"><label className="flabel">カテゴリ</label><select className="sel" value={finForm.category} onChange={e=>setFinForm(f=>({...f,category:e.target.value}))}>{["食費","交通","学費","娯楽","収入","その他"].map(c=><option key={c}>{c}</option>)}</select></div>
+            <div style={{display:"flex",gap:".5rem",marginTop:"1rem"}}>
+              <button className="btn btn-p" style={{flex:1}} onClick={addFin}>追加</button>
+              <button className="btn btn-g" onClick={()=>setShowFinForm(false)}>キャンセル</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function UnitsTab({units,setUnits,calcGPA,totalCredits,reqCredits}) {
+  const gpa=calcGPA();
+  function setGrade(id,grade) { setUnits(us=>us.map(u=>u.id===id?{...u,grade:grade||null}:u)); }
+  return (
+    <>
+      <div className="sec">🎓 単位管理</div>
+      <div className="card" style={{marginBottom:"1rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:".5rem"}}>
+          <span style={{fontWeight:700,color:"#92400e"}}>GPA</span>
+          <span style={{fontSize:"1.6rem",fontWeight:700,color:"#d97706"}}>{gpa}</span>
+        </div>
+        <div className="gpa-bar"><div className="gpa-fill" style={{width:`${Math.min(100,(gpa/4)*100)}%`}} /></div>
+        <div style={{display:"flex",gap:"1rem",marginTop:".75rem",fontSize:".78rem",color:"#92400e"}}>
+          <span>取得単位: <b>{totalCredits}</b></span><span>必修: <b>{reqCredits}</b></span>
+        </div>
+      </div>
+      {units.map(u=>(
+        <div key={u.id} className="unit-row">
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:".88rem",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.name}</div>
+            <div style={{fontSize:".72rem",color:"#b45309"}}>{u.credits}単位 · {u.required?"必修":"選択"}</div>
+          </div>
+          <select className="sel" style={{width:"auto",padding:".3rem .5rem",marginLeft:".5rem"}} value={u.grade||""} onChange={e=>setGrade(u.id,e.target.value)}>
+            <option value="">未評価</option>
+            {["A+","A","B","C","F"].map(g=><option key={g}>{g}</option>)}
+          </select>
+          {u.grade && <span className={`badge ${u.grade==="F"?"badge-red":u.grade.startsWith("A")?"badge-green":"badge-purple"}`} style={{marginLeft:".4rem"}}>{u.grade}</span>}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function MailTab({mailForm,setMailForm,generateMail,genMail,loadingMail}) {
+  return (
+    <>
+      <div className="sec">✉️ メール自動作成</div>
+      <div className="card">
+        <div className="frow"><label className="flabel">メールの種類</label><select className="sel" value={mailForm.reason} onChange={e=>setMailForm(f=>({...f,reason:e.target.value}))}><option value="欠席">欠席連絡</option><option value="遅刻">遅刻連絡</option><option value="課題提出遅延">課題提出の遅延</option><option value="質問">授業への質問</option><option value="相談">面談・相談のお願い</option><option value="感謝">お礼のメール</option></select></div>
+        <div className="frow"><label className="flabel">教授名</label><input className="input" value={mailForm.prof} onChange={e=>setMailForm(f=>({...f,prof:e.target.value}))} placeholder="例：田中" /></div>
+        <div className="frow"><label className="flabel">授業名</label><input className="input" value={mailForm.subject_name} onChange={e=>setMailForm(f=>({...f,subject_name:e.target.value}))} placeholder="例：ソフトウェア工学" /></div>
+        <div className="frow"><label className="flabel">追記事項（任意）</label><input className="input" value={mailForm.extra} onChange={e=>setMailForm(f=>({...f,extra:e.target.value}))} placeholder="例：体調不良のため" /></div>
+        <button className="btn btn-p" style={{width:"100%",marginTop:".5rem"}} onClick={generateMail} disabled={loadingMail}>{loadingMail?"生成中…🤖":"✉️ メールを生成する"}</button>
+      </div>
+      {genMail && <>
+        <div className="mail-out">{genMail}</div>
+        <button className="btn btn-g" style={{width:"100%",marginTop:".5rem"}} onClick={()=>navigator.clipboard?.writeText(genMail)}>📋 コピーする</button>
+      </>}
+    </>
+  );
+}
+
+function LinksTab() {
+  const links=[
+    {name:"manaba",desc:"授業資料・課題・お知らせの確認",url:"https://manaba.jwu.ac.jp/ct/home",color:"#2563eb",bg:"#eff6ff",border:"#bfdbfe",emoji:"📚"},
+    {name:"ジャスミンナビ",desc:"キャンパスマップ・教室案内・施設情報",url:"https://www6.jwu.ac.jp/uprx/",color:"#059669",bg:"#f0fdf4",border:"#a7f3d0",emoji:"🗺️"},
+  ];
+  return (
+    <>
+      <div className="sec">🔗 学内リンク</div>
+      {links.map(l=>(
+        <a key={l.name} href={l.url} target="_blank" rel="noopener noreferrer"
+          style={{display:"flex",alignItems:"center",gap:"1rem",padding:"1.25rem 1.5rem",background:l.bg,border:`2px solid ${l.border}`,borderRadius:14,marginBottom:".75rem",textDecoration:"none",color:"inherit"}}>
+          <div style={{fontSize:"2.2rem"}}>{l.emoji}</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:"1.1rem",color:l.color}}>{l.name}</div>
+            <div style={{fontSize:".78rem",color:"#92400e",marginTop:".25rem"}}>{l.desc}</div>
+            <div style={{fontSize:".68rem",color:"#b45309",marginTop:".2rem",wordBreak:"break-all"}}>{l.url}</div>
+          </div>
+          <div style={{fontSize:"1.3rem",color:l.color,opacity:.7}}>→</div>
+        </a>
+      ))}
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>
